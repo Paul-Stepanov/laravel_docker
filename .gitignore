@@ -1,0 +1,6 @@
+src/*
+logs/nginx/*
+logs/php/*
+docker/mysql/initdb/*
+.env
+.idea

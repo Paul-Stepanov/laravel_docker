@@ -1,0 +1,92 @@
+name: kurinoe-tsarstvo
+
+services:
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./src:/var/www
+      - ./docker/nginx/:/etc/nginx/templates/
+      - ./logs/nginx:/var/log/nginx
+    environment:
+      - DOMAIN
+      - DOMAIN_PROD
+    depends_on:
+      - php
+
+  php:
+    build:
+      args:
+        user: laravel
+        uid: 1000
+        NODE_VERSION: ${NODE_VERSION}
+      context: .
+      dockerfile: docker/php/Dockerfile
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./src:/var/www
+      - ./.env:/var/www/.env
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/.user.ini
+      - ./logs/php:/var/log/php
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PHP_IDE_CONFIG: "serverName=${PHP_IDE_CONFIG_SERVER_NAME}" # PHP_IDE_CONFIG_SERVER_NAME - так-же должен называться сервер xDebug в настройках PhpStorm
+    depends_on:
+      - update
+      - db
+
+  # update - скрипт, который подготавливает приложение к работе и синхронизирует composer зависимости
+  update:
+    build:
+      args:
+        user: laravel
+        uid: 1000
+        NODE_VERSION: ${NODE_VERSION}
+      context: .
+      dockerfile: docker/php/Dockerfile
+    command: sh -c "chmod +x ./update.sh && ./update.sh"
+    restart: no
+    volumes:
+      - ./src:/var/www
+      - ./.env:/var/www/.env
+      - ./docker/php/update.sh:/var/www/update.sh
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysqlappdata:/var/lib/mysql
+      - ./docker/mysql/my.cnf:/etc/mysql/my.cnf
+      - ./docker/mysql/initdb:/docker-entrypoint-initdb.d
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_DATABASE}
+    healthcheck:
+      test: [ "CMD", "mysqladmin" ,"ping", "-h", "localhost" ]
+      interval: 5s
+      retries: 5
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:5
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  mysqlappdata:
+    driver: local
