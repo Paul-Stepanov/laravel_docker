@@ -2,7 +2,8 @@
 
 ## Описание проекта
 
-Это Laravel-приложение, развернутое с использованием Docker. Проект включает в себя контейнеры для Nginx, PHP, MySQL и PhpMyAdmin.
+Это Laravel-приложение, развернутое с использованием Docker. Проект включает в себя контейнеры для Nginx, PHP, MySQL и
+PhpMyAdmin.
 
 ## Структура проекта
 
@@ -28,10 +29,12 @@ project_name/
    ```
    git clone <repository-url> .
    ```
-   
-Скопируйте файл `.env.locale` в `.env`, переместив его в корень проекта, рядом с файлом [docker compose.yml](docker compose.yml)
-   
-2. Настройте переменные окружения в файле `.env` при необходимости (смените `APP_URL` на http://localhost если работаете локально)
+
+Скопируйте файл `.env.locale` в `.env`, переместив его в корень проекта, рядом с
+файлом [docker compose.yml](docker compose.yml)
+
+2. Настройте переменные окружения в файле `.env` при необходимости (смените `APP_URL` на http://localhost если работаете
+   локально)
 
 ### Переменные окружения
 
@@ -40,12 +43,15 @@ project_name/
 - `DB_PASSWORD` - пароль для доступа к MySQL
 - `PHP_IDE_CONFIG_SERVER_NAME` - имя сервера для настройки Xdebug в PhpStorm
 - `NODE_VERSION` - версия Node.js
+- `DOMAIN` - переменная для конфига nginx, определяет имя сервера
+- `DOMAIN_PROD` - переменная для конфига nginx, определяет откуда будут тянуться изображения для тестовой площадки (
+  proxy_pass)
 
 3. Запустите контейнеры из корня проекта:
    ```
    docker compose up -d
    ```
-   
+
 4. После запуска контейнеры будут доступны по следующим адресам:
     - Веб-приложение: http://localhost
     - PhpMyAdmin: http://localhost:8080
@@ -54,22 +60,27 @@ project_name/
 ## Компоненты системы
 
 ### Nginx
+
 - Веб-сервер на базе образа nginx:alpine
 - Прослушивает порты 80 и 443
-- Использует шаблон конфигурации из [docker/nginx/default.conf.template](file:///home/stepanov/PhpstormProjects/kur_docker/docker/nginx/default.conf.template)
+- Использует шаблон конфигурации
+  из [docker/nginx/default.conf.template](file:///home/stepanov/PhpstormProjects/kur_docker/docker/nginx/default.conf.template)
 
 ### PHP
+
 - PHP 7.4 FPM с необходимыми расширениями
 - Включает Xdebug для отладки
 - Composer для управления зависимостями PHP
 - Node.js для сборки фронтенда
 
 ### MySQL
+
 - База данных MySQL
 - Прослушивает порт 3306
 - Данные сохраняются в именованном Docker volume
 
 ### PhpMyAdmin
+
 - Веб-интерфейс для управления MySQL
 - Доступен по адресу http://localhost:8080
 
@@ -77,7 +88,8 @@ project_name/
 
 При запуске контейнеров происходит следующее:
 
-1. Контейнер `update` запускает скрипт [docker/php/update.sh](file:///home/stepanov/PhpstormProjects/kur_docker/docker/php/update.sh), который:
+1. Контейнер `update` запускает
+   скрипт [docker/php/update.sh](file:///home/stepanov/PhpstormProjects/kur_docker/docker/php/update.sh), который:
     - Устанавливает зависимости Composer (если необходимо)
     - Устанавливает зависимости NPM и собирает фронтенд
     - Создает символические ссылки для хранилища
@@ -93,9 +105,11 @@ project_name/
 
 ## Работа с базой данных
 
-База данных автоматически инициализируется с помощью скриптов из директории `docker/mysql/initdb/`. Положите файлы с SQL-скриптами(бекап БД) в директорию `docker/mysql/initdb/` и они будут выполнены при инициализации базы данных.
+База данных автоматически инициализируется с помощью скриптов из директории `docker/mysql/initdb/`. Положите файлы с
+SQL-скриптами(бекап БД) в директорию `docker/mysql/initdb/` и они будут выполнены при инициализации базы данных.
 
-Для доступа к базе данных можно использовать PhpMyAdmin по адресу http://localhost:8080 или подключиться напрямую к порту 3306.
+Для доступа к базе данных можно использовать PhpMyAdmin по адресу http://localhost:8080 или подключиться напрямую к
+порту 3306.
 
 ## Отладка
 
