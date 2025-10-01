@@ -2,5 +2,6 @@ src/*
 logs/nginx/*
 logs/php/*
 docker/mysql/initdb/*
+docker/postgres/initdb/*
 .env
 .idea
