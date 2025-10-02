@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# Загружаем nvm в текущую сессию оболочки
+# Убедитесь, что NVM_DIR установлен или используйте путь по умолчанию
+export NVM_DIR="/usr/local/nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
 # Устанавливаем зависимости Composer с отключенным Xdebug
 if [ -f "composer.json" ] && [ -f "composer.lock" ]; then
     php -d xdebug.mode=off /usr/bin/composer install --no-scripts --no-interaction --optimize-autoloader
