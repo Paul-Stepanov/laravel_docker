@@ -1,0 +1,14 @@
+src/.git
+src/.idea
+src/node_modules
+src/vendor
+src/storage/logs/*
+src/storage/framework/cache/*
+src/storage/framework/sessions/*
+src/storage/framework/views/*
+src/public/hot
+src/public/build
+src/.env
+.env
+.idea
+logs

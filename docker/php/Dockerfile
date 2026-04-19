@@ -1,14 +1,24 @@
-FROM php:7.4-fpm
+# === STAGE 1: Base — системные зависимости, PHP-расширения, пользователь ===
+FROM php:8.2-fpm AS base
+
+ARG USER=laravel
+ARG UID=1000
+ARG NODE_VERSION=22
+
+ENV USER=${USER} UID=${UID}
 
 WORKDIR /var/www
 
-ARG user
-ARG uid
-ARG NODE_VERSION
+# Блок 1: Node.js (независим, часто обновляется)
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && curl -sSL https://deb.nodesource.com/setup_${NODE_VERSION}.x -o /tmp/nodesource_setup.sh \
+    && bash /tmp/nodesource_setup.sh \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/nodesource_setup.sh
 
-# Установка системных зависимостей
-RUN curl -sL https://deb.nodesource.com/setup_$NODE_VERSION.x | bash - \
-    && apt-get update && apt-get install -y \
+# Блок 2: Системные пакеты + PHP-расширения (вместе для минимального размера слоя)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libonig-dev \
     libzip-dev \
@@ -18,45 +28,42 @@ RUN curl -sL https://deb.nodesource.com/setup_$NODE_VERSION.x | bash - \
     locales \
     zip \
     jpegoptim optipng pngquant gifsicle \
-    vim \
     unzip \
     git \
     curl \
-    nodejs
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo_mysql mbstring zip exif pcntl gd \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+# Блок 3: Пользователь (статично, мгновенно)
+RUN useradd -G www-data,root -u ${UID} -m -d /home/${USER} ${USER} \
+    && mkdir -p /home/${USER}/.composer \
+    && chown -R ${USER}:${USER} /home/${USER}
 
-# Установка расширений PHP
-RUN docker-php-ext-install pdo_mysql mbstring zip exif pcntl
-RUN docker-php-ext-configure gd --enable-gd --with-freetype=/usr/include/ --with-jpeg=/usr/include/
-RUN docker-php-ext-install gd
-
-# Установка Xdebug
-RUN pecl install xdebug-3.1.6 \
-    && docker-php-ext-enable xdebug
-
-# Установка composer
+# Composer
 COPY --from=composer:2.8.5 /usr/bin/composer /usr/bin/composer
 
-RUN useradd -G www-data,root -u $uid -m -d /home/$user $user
+USER ${USER}
 
-RUN mkdir -p /home/$user/.composer && \
-    chown -R $user:$user /home/$user
+# === STAGE 2: Development (с Xdebug и dev-инструментами) ===
+FROM base AS development
 
-# Копирование конфигурации
-COPY ./docker/php/php.ini /usr/local/etc/php/conf.d/php.ini
-COPY ./src/composer*.json .
+USER root
 
-RUN php -d xdebug.mode=off /usr/bin/composer install --no-scripts --no-interaction --optimize-autoloader
+RUN apt-get update && apt-get install -y --no-install-recommends nano mc \
+    && pecl install xdebug-3.4.0 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Копирование всего приложения
-COPY ./src .
-COPY ./.env .
-COPY ./docker/php/update.sh .
+USER ${USER}
 
-RUN php artisan storage:link && \
-    chmod +x ./update.sh && \
-    chown -R $user:$user /usr/src && \
-    chmod -R 775 ./storage ./bootstrap/cache
+# === STAGE 3: Production (минимальный образ) ===
+FROM base AS production
 
-USER $user
+COPY ./docker/php/php.prod.ini /usr/local/etc/php/conf.d/.user.ini
+COPY --chown=${USER}:${USER} ./src ./
+
+RUN php artisan storage:link \
+    && chmod -R 775 ./storage ./bootstrap/cache
+
+USER ${USER}

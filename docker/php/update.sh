@@ -14,8 +14,11 @@ export npm_config_cache=/tmp/.npm
 # Установка зависимостей npm только при необходимости
 if [ -f "package.json" ]; then
     npm install
-    npm run prod
+    npm run build
 fi
+
+# Генерируем APP_KEY если не задан
+grep -q "^APP_KEY=$" .env 2>/dev/null && php -d xdebug.mode=off artisan key:generate --force
 
 # Выполняем команды Artisan, также отключая Xdebug
 php -d xdebug.mode=off artisan optimize:clear

@@ -1,3 +1,6 @@
+# Кэш для проксированных медиафайлов (активен только при DOMAIN_PROD)
+proxy_cache_path /var/cache/nginx/media levels=1:2 keys_zone=media_cache:10m max_size=1g inactive=7d use_temp_path=off;
+
 server {
     listen 80;
     listen [::]:80;
@@ -9,11 +12,44 @@ server {
     access_log /var/log/nginx/access.log;
     root /var/www/public;
 
-    location ~* \.(mp3|m4a|aac|ogg|midi?|wav|mp4|mov|webm|mpe?g|avi|ogv|flv|wmv|jpe?g|png) {
-        proxy_pass         https://${DOMAIN_PROD};
+    # DNS resolver для внешних доменов
+    resolver 8.8.8.8 8.8.4.4 valid=300s;
+    resolver_timeout 5s;
+
+    # Медиа-файлы: сначала локально, затем проксирование с боевого сервера
+    location ~* \.(mp3|m4a|aac|ogg|midi?|wav|mp4|mov|webm|mpe?g|avi|ogv|flv|wmv|jpe?g|png)$ {
+        proxy_cache media_cache;
+        proxy_cache_valid 200 7d;
+        proxy_cache_valid 404 1m;
+        proxy_cache_use_stale error timeout invalid_header updating;
+        proxy_cache_background_update on;
+        proxy_cache_lock on;
+
+        try_files $uri @proxy_media;
+    }
+
+    location @proxy_media {
+        set $upstream_prod "${DOMAIN_PROD}";
+
+        # Если DOMAIN_PROD не задан — сразу 404
+        if ($upstream_prod = "") {
+            return 404;
+        }
+
+        proxy_pass         https://$upstream_prod;
         proxy_redirect     off;
+        proxy_set_header   Host             $upstream_prod;
         proxy_set_header   X-Real-IP        $remote_addr;
         proxy_set_header   X-Forwarded-For  $proxy_add_x_forwarded_for;
+        proxy_ssl_server_name on;
+
+        proxy_set_header   Cookie "";
+        proxy_set_header   Authorization "";
+
+        proxy_next_upstream error timeout http_502 http_503 http_504;
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 10s;
+        proxy_read_timeout 10s;
     }
 
     location ~ \.php$ {

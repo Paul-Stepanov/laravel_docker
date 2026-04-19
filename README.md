@@ -1,21 +1,28 @@
 # Dockerized Laravel Application
 
-## Описание проекта
-
-Это Laravel-приложение, развернутое с использованием Docker. Проект включает в себя контейнеры для Nginx, PHP, MySQL и
-PhpMyAdmin.
+Docker-окружение для развёртывания Laravel-приложений. Включает Nginx, PHP-FPM 8.2, MySQL 8.0 и PhpMyAdmin.
 
 ## Структура проекта
 
 ```
-project_name/
-├── docker/                 # Docker конфигурации
-│   ├── mysql/              # Конфигурация MySQL
-│   ├── nginx/              # Конфигурация Nginx
-│   └── php/                # Конфигурация PHP
-├── src/                    # Исходный код Laravel приложения
-├── docker compose.yml      # Основной файл Docker Compose
-└── .env                    # Переменные окружения
+project/
+├── docker/
+│   ├── mysql/
+│   │   ├── initdb/                # SQL-скрипты инициализации БД
+│   │   └── my.cnf                 # Конфигурация MySQL
+│   ├── nginx/
+│   │   └── default.conf.template  # Шаблон конфигурации Nginx
+│   └── php/
+│       ├── Dockerfile             # Multi-stage Dockerfile (dev/prod)
+│       ├── php.dev.ini            # PHP-настройки для разработки
+│       ├── php.prod.ini           # PHP-настройки для production
+│       └── update.sh              # Скрипт инициализации приложения
+├── logs/
+│   ├── nginx/                     # Логи Nginx
+│   └── php/                       # Логи PHP
+├── src/                           # Исходный код Laravel
+├── .env                           # Переменные окружения
+└── docker-compose.yml
 ```
 
 ## Требования
@@ -23,110 +30,164 @@ project_name/
 - Docker
 - Docker Compose
 
-## Запуск проекта
+## Быстрый старт
 
-1. Клонируйте репозиторий в директорию **src**:
+### Существующий проект
+
+1. Клонируйте репозиторий Laravel в директорию `src/`:
+   ```bash
+   git clone <repository-url> src
    ```
-   git clone <repository-url> .
+
+2. Скопируйте `.env.example` в `.env` в корне проекта:
+   ```bash
+   cp .env.example .env
    ```
 
-Скопируйте файл `.env.locale` в `.env`, переместив его в корень проекта, рядом с
-файлом [docker compose.yml](docker compose.yml)
-
-2. Настройте переменные окружения в файле `.env` при необходимости (смените `APP_URL` на http://localhost если работаете
-   локально)
-
-### Переменные окружения
-
-Основные переменные окружения находятся в файле `.env`:
-
-- `DB_PASSWORD` - пароль для доступа к MySQL
-- `PHP_IDE_CONFIG_SERVER_NAME` - имя сервера для настройки Xdebug в PhpStorm
-- `NODE_VERSION` - версия Node.js
-- `DOMAIN` - переменная для конфига nginx, определяет имя сервера
-- `DOMAIN_PROD` - переменная для конфига nginx, определяет откуда будут тянуться изображения для тестовой площадки (
-  proxy_pass)
-
-3. Запустите контейнеры из корня проекта:
-   ```
+3. Запустите контейнеры:
+   ```bash
    docker compose up -d
    ```
 
-4. После запуска контейнеры будут доступны по следующим адресам:
-    - Веб-приложение: http://localhost
-    - PhpMyAdmin: http://localhost:8080
-    - MySQL: порт 3306 (доступен локально)
+### Новый проект (установка через Composer)
 
-## Компоненты системы
+1. Скопируйте `.env.example` в `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Запустите MySQL:
+   ```bash
+   docker compose up -d db
+   ```
+
+3. Установите Laravel в `src/`:
+   ```bash
+   docker compose run --rm --no-deps php bash -c "composer create-project laravel/laravel /var/www/tmp && cp -a /var/www/tmp/. /var/www/ && rm -rf /var/www/tmp"
+   ```
+
+4. Запустите все контейнеры:
+   ```bash
+   docker compose up -d
+   ```
+
+### Результат
+
+После запуска доступны:
+- **Веб-приложение**: http://localhost
+- **PhpMyAdmin**: http://localhost:8080
+- **MySQL**: порт 3306
+
+## Переменные окружения
+
+| Переменная | Описание | По умолчанию |
+|---|---|---|
+| `DB_PASSWORD` | Пароль MySQL (root и пользователь) | `example` |
+| `DB_DATABASE` | Имя базы данных | `app` |
+| `DB_USERNAME` | Пользователь MySQL | `laravel` |
+| `PHP_IDE_CONFIG_SERVER_NAME` | Имя сервера Xdebug в PhpStorm | `xdebug` |
+| `NODE_VERSION` | Версия Node.js | `24` |
+| `DOMAIN` | Имя сервера для Nginx | `localhost` |
+| `DOMAIN_PROD` | Адрес для проксирования медиафайлов | `example.com` |
+| `USER` / `UID` | Пользователь внутри PHP-контейнера | `laravel` / `1000` |
+
+## Сервисы
 
 ### Nginx
 
-- Веб-сервер на базе образа nginx:alpine
-- Прослушивает порты 80 и 443
-- Использует шаблон конфигурации
-  из [docker/nginx/default.conf.template](file:///home/stepanov/PhpstormProjects/kur_docker/docker/nginx/default.conf.template)
+Образ `nginx:alpine`, порты 80 и 443. Конфигурация генерируется из шаблона с подстановкой `DOMAIN` и `DOMAIN_PROD`.
+
+Медиафайлы (изображения, видео, аудио) сначала ищутся локально. Если файл не найден:
+- При заданном `DOMAIN_PROD` — проксируется с боевого сервера и кэшируется на 7 дней
+- При пустом `DOMAIN_PROD` — возвращается 404
 
 ### PHP
 
-- PHP 7.4 FPM с необходимыми расширениями
-- Включает Xdebug для отладки
-- Composer для управления зависимостями PHP
-- Node.js для сборки фронтенда
+Multi-stage Dockerfile на базе `php:8.2-fpm`:
+
+- **base** — системные пакеты, PHP-расширения (`pdo_mysql`, `mbstring`, `zip`, `exif`, `pcntl`, `gd`), Node.js, Composer 2.8
+- **development** — добавляет Xdebug 3.4, `nano`, `mc`
+- **production** — копирует исходный код, создаёт `storage:link`, выставляет права
+
+В режиме разработки монтируются `php.dev.ini` с настройками Xdebug (trigger mode, порт 9003). PHP работает от пользователя `laravel` (UID 1000).
 
 ### MySQL
 
-- База данных MySQL
-- Прослушивает порт 3306
-- Данные сохраняются в именованном Docker volume
+Образ `mysql:8.0`, порт 3306. Автоматически создаёт пользователя `DB_USERNAME` и базу `DB_DATABASE`. Данные хранятся в Docker volume `mysqlappdata`. SQL-файлы из `docker/mysql/initdb/` выполняются только при первом создании базы.
 
-### PhpMyAdmin
+### update
 
-- Веб-интерфейс для управления MySQL
-- Доступен по адресу http://localhost:8080
-
-## Процесс развертывания
-
-При запуске контейнеров происходит следующее:
-
-1. Контейнер `update` запускает
-   скрипт [docker/php/update.sh](file:///home/stepanov/PhpstormProjects/kur_docker/docker/php/update.sh), который:
-    - Устанавливает зависимости Composer (если необходимо)
-    - Устанавливает зависимости NPM и собирает фронтенд
-    - Создает символические ссылки для хранилища
-    - Очищает кэш приложения
-    - Применяет миграции базы данных
-    - Создает кэши конфигурации, маршрутов и представлений
-
-2. Контейнер `php` запускается с установленными зависимостями
-
-3. Контейнер `nginx` начинает обслуживать веб-запросы
-
-4. Контейнер `db` запускает MySQL сервер
+Одноразовый контейнер, запускаемый перед `php`. Выполняет скрипт `update.sh`:
+- Устанавливает зависимости Composer (с отключённым Xdebug)
+- Устанавливает NPM-зависимости и собирает фронтенд (`npm run build`)
+- Генерирует `APP_KEY`, если он не задан
+- Очищает кэш
+- Применяет миграции
+- Переводит приложение в maintenance mode и обратно
 
 ## Работа с базой данных
 
-База данных автоматически инициализируется с помощью скриптов из директории `docker/mysql/initdb/`. Положите файлы с
-SQL-скриптами(бекап БД) в директорию `docker/mysql/initdb/` и они будут выполнены при инициализации базы данных.
+Для инициализации БД из дампа — поместите SQL-файлы в `docker/mysql/initdb/`. Они выполнятся только при первом запуске, когда база создаётся с нуля.
 
-Для доступа к базе данных можно использовать PhpMyAdmin по адресу http://localhost:8080 или подключиться напрямую к
-порту 3306.
+Подключение:
+```bash
+# MySQL CLI
+docker compose exec db mysql -u laravel -pexample app
 
-## Отладка
+# PhpMyAdmin
+# http://localhost:8080
+```
 
-Проект настроен для отладки с помощью Xdebug. Для работы с Xdebug в PhpStorm:
+## Отладка (Xdebug)
 
-1. Убедитесь, что имя сервера в настройках PhpStorm совпадает с переменной `PHP_IDE_CONFIG_SERVER_NAME` в файле `.env`
-2. Настройте прослушивание порта 9003 в PhpStorm
+Xdebug работает в trigger mode — запускается только при передаче соответствующего cookie/параметра.
 
-## Полезные команды Docker
+Настройка PhpStorm:
+1. Имя сервера в Settings > PHP > Servers должно совпадать с `PHP_IDE_CONFIG_SERVER_NAME` из `.env` (по умолчанию `xdebug`)
+2. Порт Xdebug — `9003`
+3. Включите "Listen for PHP Debug Connections"
 
-- Остановка всех контейнеров: `docker compose down`
-- Просмотр логов: `docker compose logs [service_name]`
-- Выполнение команды в контейнере: `docker compose exec [service_name] [command]`
-- Пересборка контейнеров: `docker compose build`
+Лог Xdebug записывается в `logs/php/xdebug.log`.
 
-## Примечания
+## Типичные команды
 
-- Все данные MySQL сохраняются в Docker volume и сохраняются между перезапусками
-- Логи Nginx и PHP сохраняются в директории `logs/`
-- Исходный код приложения находится в директории `src/`
+```bash
+# Запуск / остановка
+docker compose up -d
+docker compose down
+
+# Полная пересборка (без кэша)
+docker compose build --no-cache && docker compose up -d
+
+# Пересборка только PHP-образа
+docker compose build php
+
+# Логи
+docker compose logs -f [nginx|php|db|update]
+
+# Artisan
+docker compose exec php php artisan <command>
+
+# Composer
+docker compose exec php composer <command>
+
+# npm
+docker compose exec php npm <command>
+
+# PHPUnit
+docker compose exec php php artisan test --filter=TestMethodName
+
+# Запуск команд БЕЗ Xdebug (быстрее)
+docker compose exec php php -d xdebug.mode=off artisan <command>
+```
+
+## Production
+
+Для сборки production-образа измените `target` в `docker-compose.yml` с `development` на `production` для сервисов `php` и `update`, затем пересоберите:
+
+```bash
+docker compose build php
+docker compose up -d
+```
+
+Production-образ копирует исходный код внутрь контейнера (без bind-mount), использует `php.prod.ini` с отключённым отображением ошибок.

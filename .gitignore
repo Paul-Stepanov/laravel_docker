@@ -1,6 +1,7 @@
 src/*
 logs/nginx/*
 logs/php/*
-docker/mysql/initdb/*
+docker/mysql/initdb/*.sql
 .env
 .idea
+/CLAUDE.md

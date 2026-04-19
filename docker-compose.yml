@@ -17,9 +17,8 @@ services:
 
   php:
     build:
+      target: development
       args:
-        user: laravel
-        uid: 1000
         NODE_VERSION: ${NODE_VERSION}
       context: .
       dockerfile: docker/php/Dockerfile
@@ -28,22 +27,29 @@ services:
     volumes:
       - ./src:/var/www
       - ./.env:/var/www/.env
-      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/.user.ini
+      - ./docker/php/php.dev.ini:/usr/local/etc/php/conf.d/.user.ini
       - ./logs/php:/var/log/php
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       PHP_IDE_CONFIG: "serverName=${PHP_IDE_CONFIG_SERVER_NAME}" # PHP_IDE_CONFIG_SERVER_NAME - так-же должен называться сервер xDebug в настройках PhpStorm
     depends_on:
-      - update
-      - db
+      update:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "php-fpm -t 2>/dev/null || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # update - скрипт, который подготавливает приложение к работе и синхронизирует composer зависимости
   update:
     build:
+      target: development
       args:
-        user: laravel
-        uid: 1000
         NODE_VERSION: ${NODE_VERSION}
       context: .
       dockerfile: docker/php/Dockerfile
@@ -58,7 +64,7 @@ services:
         condition: service_healthy
 
   db:
-    image: mysql
+    image: mysql:8.0
     restart: unless-stopped
     ports:
       - "3306:3306"
@@ -69,6 +75,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     healthcheck:
       test: [ "CMD", "mysqladmin" ,"ping", "-h", "localhost" ]
       interval: 5s
